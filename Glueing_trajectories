@@ -4,7 +4,7 @@ import numpy as np
 from matplotlib import pyplot as plt
 import pandas as pd
 
-### here it is expected that one has a pandas dataframe filled with traching events. it is expected to have keys like 'frame', 'x', 'particle' (ID), 'phi and so on as r 
+### here it is expected that one has a pandas dataframe filled with tracking events. it is expected to have keys like 'frame', 'x', 'particle' (ID), 'phi and so on as r 
 
 
 
