@@ -183,4 +183,60 @@ def Glue_all_possible(df0, matching_intervall = 0.1, matching_key = 'theta_state
     return df_new 
 
 
+## example applicaiton of glueing:
+
+# Glueing trajectories
+## zusammenkleben nach summed Int.
+import Modules01
+import importlib
+importlib.reload(Modules01);
+matching_accuracy = 0.03
+matching_intervall = (np.max(df_active.int_sum) - np.min(df_active.int_sum))* matching_accuracy
+if load_glued_Dataframe:
+    try:
+        df_active_glued = pd.read_pickle(df_path + 'df_active_glued.pkl')
+        df_passive_glued = pd.read_pickle(df_path + 'df_passive_glued.pkl')
+        print('load glued trajectorie Dataframes')
+        print('max - min int sum : ',(np.max(df_active.int_sum)-np.min(df_active.int_sum)))
+        if (np.max(df_active.int_sum)-np.min(df_active.int_sum)) < 0.1: ## rather dirty empriric / arbit condition... it works
+            matching_intervall = 2.2
+    except:
+        load_glued_Dataframe = False
+        print('no glued trajectorie Dataframes found. do the glueing')
+if not load_glued_Dataframe:
+    print('glueing trajectories')
+    ### sort by phi 
+    if (np.max(df_active.int_sum)-np.min(df_active.int_sum)) < 0.1: ## rather dirty empriric / arbit condition... it works
+        matching_intervall = 2.2
+    df_active_glued0= df_active.copy()
+    #matching_intervall = (np.max(df_active_glued0.int_sum) - np.min(df_active_glued0.int_sum))* matching_accuracy
+    print('matching intervall active ',matching_intervall)
+    df_active_glued0 = Modules01.Glue_all_possible(df_active_glued0, matching_intervall=matching_intervall,matching_key = 'theta_state')
+
+    df_passive_glued0= df_passive.copy()
+    #matching_intervall = (np.max(df_passive_glued0.int_sum) - np.min(df_passive_glued0.int_sum))* matching_accuracy
+    print(matching_intervall)
+    df_passive_glued0 = Modules01.Glue_all_possible(df_passive_glued0, matching_intervall=matching_intervall,matching_key = 'theta_state')
+
+    #df_active_glued = df_active_glued0[df_active_glued0.particle <= 1]
+    df_active_glued = df_active_glued0
+    df_active_glued['px'] = np.cos(df_active_glued.phi)
+    df_active_glued['polarization'] = np.sin(df_active_glued.phi)
+    df_active_glued.to_pickle(df_path + 'df_active_glued.pkl')
+
+    #df_passive_glued = df_passive_glued0[df_passive_glued0.particle <= 1]
+    df_passive_glued = df_passive_glued0
+    df_passive_glued['px'] = np.cos(df_passive_glued.phi)
+    df_passive_glued['polarization'] = np.sin(df_passive_glued.phi)
+    df_passive_glued.to_pickle(df_path + 'df_passive_glued.pkl')
+results.update({'obs_time_active_glued_min':len(df_active_glued)*dt_s//60})
+results.update({'obs_time_passive_glued_min':len(df_passive_glued)*dt_s//60})
+results.update({'N_active_index':len(df_active_glued)})
+results.update({'N_active_index':len(df_passive_glued)})
+print('len active0 = ', len(df_active))
+print('len active_glued = ', len(df_active_glued))
+print('len passive0 = ', len(df_passive))
+print('len passive_glued = ', len(df_passive_glued))
+
+
 
