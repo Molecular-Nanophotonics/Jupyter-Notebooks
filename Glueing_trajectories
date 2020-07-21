@@ -4,6 +4,9 @@ import numpy as np
 from matplotlib import pyplot as plt
 import pandas as pd
 
+### here it is expected that one has a pandas dataframe filled with traching events. it is expected to have keys like 'frame', 'x', 'particle' (ID), 'phi and so on as r 
+
+
 
 def Generate_Glue_Queue(pid_list, int_initial_list, int_final_list, matching_intervall = 0.1, random_decicion = True, seed = 0):
     #print('generating glue queue')
