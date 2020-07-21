@@ -1,1 +1,186 @@
+# -*- coding: utf-8 -*-
+
+import numpy as np
+from matplotlib import pyplot as plt
+import pandas as pd
+
+
+def Generate_Glue_Queue(pid_list, int_initial_list, int_final_list, matching_intervall = 0.1, random_decicion = True, seed = 0):
+    #print('generating glue queue')
+    # decides randomly which of the possible tracks to follow
+    glue_queue = np.zeros(len(pid_list)+1)
+    glue = True
+    n_ps_to_glue = 1
+    glue_queue[n_ps_to_glue-1] = pid_list[0]
+    int_final_old = int_final_list[n_ps_to_glue-1]
+    index_in = int_initial_list > 0 # initalize this list, all True
+    while glue:
+        available_pid_mask = ~np.isin(pid_list, glue_queue)
+        #int_final_old = int_final_list[n_ps_to_glue-1]
+        pid_matching_list = pid_list[available_pid_mask][(int_initial_list[available_pid_mask] > int_final_old - matching_intervall) & (int_initial_list[available_pid_mask] < int_final_old + matching_intervall)]
+        if len(pid_matching_list) > 0:
+            if random_decicion:
+                pid_for_queue = np.random.permutation(pid_matching_list)[0]
+                glue_queue[n_ps_to_glue] = pid_for_queue
+            else:
+                index_matching_mask = np.isin(pid_list, pid_matching_list)
+                int_difference_list = np.abs(int_initial_list[index_matching_mask] - int_final_list[index_matching_mask])
+                int_difference_min = np.min(np.abs(int_initial_list[index_matching_mask] - int_final_list[index_matching_mask]))
+                pid_matching_list = pid_list[index_matching_mask] # redo this list, just in case there is something odd with the sorting..
+                pid_for_queue = pid_matching_list[int_difference_list == int_difference_min][0]
+                glue_queue[n_ps_to_glue] = pid_for_queue
+            n_ps_to_glue += 1
+        else:
+            glue = False
+            break
+        int_final_old = int_final_list[pid_list == pid_for_queue]
+    #print('glue queue',len(glue_queue[:n_ps_to_glue]))
+    return glue_queue[:n_ps_to_glue]
+
+def find_long_glue_queue(particle_list, int_initial_list,int_final_list ,N_iter = 10, matching_intervall = 0.1):
+    print('find a long traj, generate glue queue')
+    # find the best glue for some permutations
+    N_ps = len(particle_list)
+    print('trying {:.3g} different permutations'.format(N_ps*N_iter))
+    glue_queue_lenght_list = np.zeros(N_iter*N_ps)
+    glue_queue_i_permut_list = np.zeros(N_iter*N_ps)
+    glue_queue_seed_list = np.zeros(N_iter*N_ps)
+    for i in range(N_ps):
+        # go through all inital permutations
+        permut_index = np.arange(0,N_permut,1)
+        permut_index[0] = permut_index[i]
+        permut_index[i] = 0
+        pid_list_new = pid_list[permut_index]
+        int_initial_list_new = int_initial_list[permut_index]
+        int_final_list_new = int_final_list[permut_index]
+        for j in range(N_iter):
+            seed = j
+            glue_queue_i_permut_list[i*N_iter+j] = i
+            glue_queue_seed_list[i*N_iter+j] = j
+            glue_queue_lenght_list = len(Generate_Glue_Queue(pid_list, int_initial_list, int_final_list, matching_accuracy = matching_accuracy, random_decicion = True, seed = j))
+    longes_glue_index = np.where(glue_queue_lenght_list == np.max(glue_queue_lenght_list))[0]
+    glue_seed = glue_queue_seed_list[longes_glue_index]
+    glue_i_permut = glue_queue_i_permut_list[longes_glue_index]
+    permut_index = np.arange(0,N_permut,1)
+    permut_index[0] = permut_index[glue_i_permut]
+    permut_index[glue_i_permut] = 0
+    pid_glue_queue = Generate_Glue_Queue(pid_list[permut_index], int_initial_list[permut_index], int_final_list[permut_index], matching_accuracy = matching_accuracy, random_decicion = True, seed = glue_seed)
+    return pid_glue_queue
+
+
+def Glue_traj(pid_glue_queue,df,matching_intervall = 0.1,matching_key = 'theta_state'):
+    #print('gluing traj')
+    ### concatanate trajecories. rotate each trajectory so that the particle orientation of the first point of a new traj. fits the orientation of the last point in the old traj. The last point of the a traj is replaced by the first of the next traj. 
+    x_data_concat = np.zeros(len(df))
+    y_data_concat = np.zeros(len(df))
+    phi_data_concat = np.zeros(len(df))
+    summed_int_data_concat = np.zeros(len(df))
+    glue_trig_list_concat = np.zeros(len(df))
+    n0 = 0
+    n_p = 0
+    for pid in pid_glue_queue:
+        ptraj = df[df.particle == pid]
+        if len(ptraj.x) < 3:
+            print(pid_glue_queue)
+            print('there is a to short traj!!!!!!')
+            break
+        if n_p == 0:
+            phi_old = ptraj.phi.values[0]
+            x_old = ptraj.x.values[0]
+            y_old = ptraj.y.values[0]
+        
+        phi_new = ptraj.phi.values[0]
+        x_new = ptraj.x.values[0]
+        y_new = ptraj.y.values[0]
+        alpha = -phi_new+phi_old
+        phi_data = (np.array(ptraj.phi)) + alpha
+        phi_data[phi_data < -np.pi] += 2*np.pi
+        phi_data[phi_data > np.pi] -= 2*np.pi
+        summed_int_data = ptraj[[matching_key]].values[:,0]
+        glue_trig_list = np.zeros(len(phi_data))
+        glue_trig_list[0] = 1
+        x_data = (np.array(ptraj.x)) - x_new
+        y_data = (np.array(ptraj.y)) - y_new
+        x_data2 = x_data*np.cos(alpha) - y_data*np.sin(alpha)
+        y_data2 = x_data*np.sin(alpha) + y_data*np.cos(alpha)
+        x_data = x_data2 + x_old
+        y_data = y_data2 + y_old
+        n1 = len(x_data)
+        if n_p == 0:
+            x_data_concat[n0:n0+n1] = x_data[:]
+            y_data_concat[n0:n0+n1] = y_data[:]
+            phi_data_concat[n0:n0+n1] = phi_data[:]
+            summed_int_data_concat[n0:n0+n1] = summed_int_data[:]
+            glue_trig_list_concat[n0:n0+n1] = glue_trig_list[:]
+        else:
+            n0 += -1
+            x_data_concat[n0:n0+n1] = x_data[:]
+            y_data_concat[n0:n0+n1] = y_data[:]
+            phi_data_concat[n0:n0+n1] = phi_data[:]
+            summed_int_data_concat[n0:n0+n1] = summed_int_data[:]
+            glue_trig_list_concat[n0:n0+n1] = glue_trig_list[:]
+        n_p +=1
+        n0 += n1
+        phi_old = phi_data[-1]
+        x_old = x_data[-1]
+        y_old = y_data[-1]
+        
+    x_data_concat = x_data_concat[:n0]
+    y_data_concat = y_data_concat[:n0]
+    phi_data_concat = phi_data_concat[:n0]
+    summed_int_data_concat = summed_int_data_concat[:n0]
+    glue_trig_list_concat = glue_trig_list_concat[:n0]
+    return x_data_concat, y_data_concat, phi_data_concat, summed_int_data_concat, glue_trig_list_concat
+
+
+def Glue_all_possible(df0, matching_intervall = 0.1, matching_key = 'theta_state'):
+    print('glueing all possible')
+    ## glue, take rest, glue, take rest, glue...
+    #filter for trajektory length > 3
+    pid_to_short_traj_list =[]   
+    for pid, ptraj in df0.groupby('particle'):
+        if len(ptraj) < 4:
+            pid_to_short_traj_list.append(pid)
+    df = df0[~df0.particle.isin(pid_to_short_traj_list)]
+    total_pid_list = np.unique(df.particle.values)
+    n_particles = len(total_pid_list)
+    total_int_initial_list = np.zeros(n_particles)
+    total_int_final_list = np.zeros(n_particles)
+    for i in range(n_particles):
+        pid = total_pid_list[i]
+        total_int_initial_list[i] = df[df.particle == pid][matching_key].values[0]
+        total_int_final_list[i] = df[df.particle == pid][matching_key].values[-1]
+    pid_glued = []
+    glue_queue_list = []
+    glue = True
+    while glue:
+        pid_list = total_pid_list[~np.isin(total_pid_list,pid_glued)]
+        if len(pid_list)==0:
+            break
+        int_initial_list = total_int_initial_list[~np.isin(total_pid_list,pid_glued)]
+        int_final_list = total_int_final_list[~np.isin(total_pid_list,pid_glued)]
+        glue_queue = Generate_Glue_Queue(pid_list, int_initial_list, int_final_list, matching_intervall = matching_intervall, random_decicion = False, seed = 0)
+        if len(glue_queue) == 0:
+            glue = False
+        else:
+            glue_queue_list.append(glue_queue)
+            pid_glued = pid_glued + list(glue_queue)
+    #### now glue the trajs one by one and generate the new DataFrame
+    df_new = pd.DataFrame()
+    n_frame = 0
+    for i in range(len(glue_queue_list)):
+        glue_queue = glue_queue_list[i]
+        x, y, phi, theta_state, glue_trig = Glue_traj(glue_queue,df,matching_intervall = matching_intervall, matching_key = matching_key)
+        df_new = df_new.append(pd.DataFrame({'x':x
+                          ,'y':y
+                          ,'particle':np.zeros(len(y)) + i
+                          ,'frame':np.arange(0,len(y),1)+n_frame
+                            ,'phi': phi
+                            ,matching_key:theta_state
+                            ,'glue_trig':glue_trig}))
+        n_frame = len(y) + 10
+    print('fin')
+    return df_new 
+
+
 
